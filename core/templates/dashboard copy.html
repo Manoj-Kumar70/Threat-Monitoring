@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Threat Monitoring Dashboard</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+</head>
+<body class="bg-light">
+
+<div class="container mt-4">
+
+    <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
+        <a class="navbar-brand ms-3" href="#">🛡 Threat Dashboard</a>
+
+        <div class="ms-auto me-3">
+            <button id="loginBtn" class="btn btn-outline-light me-2" data-bs-toggle="modal" data-bs-target="#loginModal">Login</button>
+            <button id="registerBtn" class="btn btn-outline-info me-2" data-bs-toggle="modal" data-bs-target="#registerModal">Register</button>
+            <button id="logoutBtn" class="btn btn-danger d-none" onclick="logout()">Logout</button>
+        </div>
+    </nav>
+
+    {% comment %} <h2 class="mb-4">🛡 Threat Monitoring & Alert Dashboard</h2> {% endcomment %}
+
+    <!-- LOGIN -->
+    <div class="modal fade" id="loginModal">
+        <div class="modal-dialog">
+            <div class="modal-content">
+            <div class="modal-header"><h5>Login</h5></div>
+            <div class="modal-body">
+                <input id="username" class="form-control mb-2" placeholder="Username">
+                <input id="password" type="password" class="form-control mb-2" placeholder="Password">
+                <button class="btn btn-primary w-100" onclick="login()">Login</button>
+            </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- REGISTER -->
+    <div class="modal fade" id="registerModal">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header"><h5>Register</h5></div>
+                <div class="modal-body">
+                    <input id="regUsername" class="form-control mb-2" placeholder="Username">
+                    <input id="regPassword" type="password" class="form-control mb-2" placeholder="Password">
+                    <select id="regRole" class="form-control mb-2">
+                        <option value="ANALYST">Analyst</option>
+                        <option value="ADMIN">Admin</option>
+                    </select>
+                    <button class="btn btn-success w-100" onclick="register()">Register</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- CREATE EVENT -->
+    <div id="createEventCard" class="card mb-4 d-none">
+        <div class="card-header">Create Event (Admin)</div>
+        <div class="card-body">
+            <input id="source" class="form-control mb-2" placeholder="Source Name">
+            <input id="etype" class="form-control mb-2" placeholder="Event Type">
+            <select id="severity" class="form-control mb-2">
+                <option>LOW</option>
+                <option>MEDIUM</option>
+                <option>HIGH</option>
+                <option>CRITICAL</option>
+            </select>
+            <textarea id="desc" class="form-control mb-2" placeholder="Description"></textarea>
+            <button class="btn btn-danger" onclick="createAlertEvent()">Submit Event</button>
+        </div>
+    </div>
+
+    <!-- ALERTS -->
+    <div class="card" id="alerts-card">
+        <div class="card-header">Alerts</div>
+        <div class="card-body">
+            <button class="btn btn-success mb-3" onclick="loadAlerts()">Load Alerts</button>
+            <ul id="alerts" class="list-group"></ul>
+        </div>
+    </div>
+
+</div>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/js/bootstrap.bundle.min.js"></script>
+
+<script>
+let token = "";
+
+window.onload = function () {
+    console.log('heell');
+    const token = localStorage.getItem('access_token');
+
+    if (!token) {
+        document.getElementById('auth-section').style.display = 'block';
+        document.getElementById('dashboard-section').style.display = 'd-none';
+    } else {
+        document.getElementById('auth-section').style.display = 'none';
+        document.getElementById('dashboard-section').style.display = 'block';
+        loadAlerts();
+    }
+}
+
+
+function login() {
+    fetch('/api/token/', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            username: document.getElementById('username').value,
+            password: document.getElementById('password').value
+        })
+    })
+    .then(async res => {
+        const data = await res.json();
+        console.log('mkk',data.user.role)
+
+        if (!res.ok) {
+            // Validation error from DRF
+            throw new Error(data.detail || 'Login failed');
+        }
+
+        return data;
+    })
+    .then(data => {
+        loadUser()
+        loadAlerts()
+
+        document.getElementById('alerts-card').style.display = 'block';
+        
+        localStorage.setItem('access_token', data.access);
+        localStorage.setItem('role', data.user.role);
+        localStorage.setItem('refresh_token', data.refresh);
+        alert("Login successful");
+    })
+    .catch(err => {
+        alert(err.message);
+    });
+}
+
+function logout() {
+  localStorage.clear();
+  location.reload();
+}
+
+function loadUser() {
+
+    if (localStorage.getItem('access_token')) {
+        loginBtn.classList.add("d-none");
+        registerBtn.classList.add("d-none");
+        logoutBtn.classList.remove("d-none");
+        document.getElementById('alerts-card').classList.remove('d-none');
+    }
+
+    if (localStorage.getItem('role') === "ADMIN") {
+      createEventCard.classList.remove("d-none");
+    }
+
+    const myModalEl = document.getElementById('loginModal');
+    const modal = bootstrap.Modal.getOrCreateInstance(myModalEl);
+    modal.hide();
+}
+
+function createAlertEvent() {
+    const token = localStorage.getItem('access_token');
+    fetch('/api/events/', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'Authorization': 'Bearer ' + token
+        },
+        body: JSON.stringify({
+            source_name: document.getElementById('source').value,
+            event_type: document.getElementById('etype').value,
+            severity: document.getElementById('severity').value,
+            description: document.getElementById('desc').value
+        })
+    })
+    .then(res => {
+        if (res.status === 201) alert("Event created");
+        else alert("Permission denied or error");
+    });
+}
+
+function loadAlerts() {
+    const token = localStorage.getItem('access_token');
+    fetch('/api/alerts/', {
+        headers: {
+            'Authorization': 'Bearer ' + token
+        }
+    })
+    .then(res => res.json())
+    .then(data => {
+        let list = document.getElementById('alerts');
+        list.innerHTML = "";
+        data.forEach(alert => {
+            list.innerHTML += `
+                <li class="list-group-item">
+                    <b>${alert.event.event_type}</b> |
+                    Severity: ${alert.event.severity} |
+                    Status: ${alert.status}
+                </li>
+            `;
+        });
+    });
+}
+</script>
+
+</body>
+</html>
